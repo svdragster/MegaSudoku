@@ -6,6 +6,7 @@
 #include <SDL.h>
 #include <SDL_main.h>
 #include <SDL_TTF.h>
+#include "save.h"
 
 #define TIMELIMIT 8000
 #define LOAD_SPEED 0.00000025
@@ -101,11 +102,9 @@ void printFeld(Feld feld);
 SDL_Color newColor(int r, int g, int b, int a);
 Feld updateFeld(Feld feld, int num, SDL_Color color);
 
-int emptySavedSudoku;
-int emptySudoku;
 int momodings = 0;
 int rendhelp = 0;
-int **numbers, **generatedNumbers, **momodinger, **savedSudoku;
+int **numbers, **generatedNumbers, **momodinger;
 int calculating = 0;
 Feld* felder;
 SDL_Rect* fields;
@@ -130,6 +129,8 @@ int selectedSlot = -1;
 
 int textAmount = 0;
 Text* texts;
+
+Sudoku savedSudoku;
 
 int loadStage = 0;
 double loadProgress = 0.0;
@@ -217,23 +218,7 @@ int main(int argc, char* argv[]) {
 	buttons = (Button*)malloc(btnAmount * sizeof(Button));
 	felder = (Feld*)malloc(25 * 25 * sizeof(Feld));
 	texts = (Text*)malloc(textAmount * sizeof(Text));
-	savedSudoku = (int**)malloc(25 * sizeof(int*));
-	if (savedSudoku == NULL) {
-		printf("saved Numbers null\n");
-		return -1;
-	}
 	int j;
-
-	for (i = 0; i < 25; i++) {
-		savedSudoku[i] = (int*)malloc(25 * sizeof(int));
-		if (savedSudoku[i] == NULL) {
-			printf("saved sudoku[%d] null\n", i);
-			return -1;
-		}
-		for (j = 0; j < 25; j++) {
-			savedSudoku[i][j] = 0;
-		}
-	}
 
 	generatedNumbers = (int**)malloc(25 * sizeof(int*));
 	if (generatedNumbers == NULL) {
@@ -285,6 +270,10 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 
+	Sudoku sudoku;
+	sudoku.size = 0;
+	savedSudoku = sudoku;
+
 	SDL_DisplayMode DM;
 	SDL_GetCurrentDisplayMode(0, &DM);
 	winx = DM.w;
@@ -335,7 +324,7 @@ int main(int argc, char* argv[]) {
 
 	int squareSize = getSquareSize(size);
 	for (i = 0; i < size*size; i++) {
-		Feld feld = createFeld(1, i / size, i % size, 0, 0, squareSize * 0.4, squareSize*0.8, newColor(255, 255, 255, SDL_ALPHA_OPAQUE));
+		Feld feld = createFeld(0, i / size, i % size, 0, 0, squareSize * 0.4, squareSize*0.8, newColor(255, 255, 255, SDL_ALPHA_OPAQUE));
 		felder[i] = feld;
 	}
 
@@ -420,8 +409,8 @@ int main(int argc, char* argv[]) {
 	addbutton(rect.x + rect.w + 105, rect.y, 35, 30, "+", TAB_SETTINGS, BUTTON_DIFFICULTY_PLUS, white, rect.x + rect.w + 115, rect.y, 15, 30);
 	addbutton(rect.x + rect.w + 15, rect.y, 35, 30, "-", TAB_SETTINGS, BUTTON_DIFFICULTY_MINUS, white, rect.x + rect.w + 25, rect.y, 15, 30);
 
-	//addbutton(rect.x + rect.w + 220, winy - 350, 190, 70, "save (F11)", TAB_MAIN, BUTTON_SAVE, white, rect.x + rect.w + 235, winy - 335, 170, 40);
-	//addbutton(rect.x + rect.w + 220, winy - 205, 190, 70, "load (F12)", TAB_MAIN, BUTTON_LOAD, white, rect.x + rect.w + 235, winy - 190, 170, 40);
+	addbutton(rect.x + rect.w + 220, winy - 350, 190, 70, "save (F11)", TAB_MAIN, BUTTON_SAVE, white, rect.x + rect.w + 235, winy - 335, 170, 40);
+	addbutton(rect.x + rect.w + 220, winy - 205, 190, 70, "load (F12)", TAB_MAIN, BUTTON_LOAD, white, rect.x + rect.w + 235, winy - 190, 170, 40);
 
 	if (digitsOf(size) == 1) {
 		rect.x = rect.x + rect.w + 45;
@@ -664,6 +653,7 @@ int main(int argc, char* argv[]) {
 									generatedNumbers[row][col] = 0;
 								}
 							}
+							animationH = 0.0;
 							int r, c;
 							for (i = 0; i < size*size; i++) {
 								c = i % size;
@@ -766,42 +756,37 @@ int main(int argc, char* argv[]) {
 							updateNumbers = 1;
 						}
 					}
-
 					else if (function == BUTTON_SAVE) {
 						if (calculating == 0) {
-							cancel = 0;
-							for (row = 0; row < size; row++) {
-								for (col = 0; col < size; col++) {
-									savedSudoku[row][col] = numbers[row][col];
-								}
-							}
-							int r, c;
-							for (i = 0; i < size*size; i++) {
-								c = i % size;
-								r = i / size;
-								felder[i] = updateFeld(felder[i], 0, newColor(255, 255, 255, 255));
-							}
-
-							updateNumbers = 1;
+							savedSudoku = toSudoku(numbers, generatedNumbers, size);
 						}
 					}
-
 					else if (function == BUTTON_LOAD) {
 						if (calculating == 0) {
-							cancel = 0;
-							for (row = 0; row < size; row++) {
-								for (col = 0; col < size; col++) {
-									numbers[row][col] = savedSudoku[row][col];
-								}
+							savedSudoku = loadFromFile();
+							size = savedSudoku.size;
+
+							changeSize(size-1);
+							fromSudoku(savedSudoku, numbers, generatedNumbers);
+							side = sqrt(size);
+							squareSize = getSquareSize(size);
+							if (size == 9) {
+								rect.w = 15;
+								rect.x = difficultyValue.rect.x;
 							}
-							int r, c;
-							for (i = 0; i < size*size; i++) {
-								c = i % size;
-								r = i / size;
-								felder[i] = updateFeld(felder[i], 0, newColor(255, 255, 255, 255));
+							else {
+								rect.w = 30;
 							}
+							string = intToString(size);
+							fontSurface = TTF_RenderText_Solid(font, string, newColor(255, 255, 255, 255));
+							free(string);
+							sizeValue.texture = SDL_CreateTextureFromSurface(renderer, fontSurface);
+							sizeValue.rect.w = rect.w;
+							sizeValue.rect.x = rect.x;
+							texts[sizeValue.id] = sizeValue;
 
 							updateNumbers = 1;
+							cancel = 0;
 						}
 					}
 					else if (function == BUTTON_MOMO) {
@@ -809,10 +794,12 @@ int main(int argc, char* argv[]) {
 							if (momodings) {
 								changeSize(9);
 								momodings = 0;
+								animationH = 0.0;
 							}
 							else {
 								momodings = 1;
 								changeSize(9);
+								animationH = 0.0;
 								string = intToString(size);
 								fontSurface = TTF_RenderText_Solid(font, string, newColor(255, 255, 255, 255));
 								free(string);
@@ -854,9 +841,6 @@ int main(int argc, char* argv[]) {
 					if (felder[i].number != numbers[r][c]) {
 						felder[i] = updateFeld(felder[i], numbers[r][c], newColor(255, 255, 255, 255));
 					}
-					/*if (update > 1500) {
-					Sleep(1);
-					}*/
 				}
 			}
 		}
@@ -959,7 +943,6 @@ int main(int argc, char* argv[]) {
 		SDL_SetRenderDrawColor(renderer, 0x10, 0x10, 0xff, SDL_ALPHA_OPAQUE);
 		for (i = 0; i < btnAmount; i++) {
 			button = buttons[i];
-			//printf("Faggot scheiß gay Knopf %d %d \n", button.tab, button.function);
 			if (button.tab == TAB_ALL) {
 				if (button.function == BUTTON_SPEAKER) {
 					//SDL_SetRenderDrawColor(renderer, 0x14, 0x14, 0x14, SDL_ALPHA_TRANSPARENT);
@@ -989,55 +972,53 @@ int main(int argc, char* argv[]) {
 						disabledButton = 1;
 					}
 				}
-				if (emptySudoku == 1) {
+				if (calculating || cancel) {
 					if (button.function == BUTTON_SAVE) {
 						disabledButton = 1;
 					}
-					if (emptySavedSudoku == 1) {
-						if (button.function == BUTTON_LOAD) {
-							disabledButton = 1;
-						}
-					}
-				}
-				else if (button.tab == TAB_SETTINGS) {
-					if (calculating) {
-						if (button.function == BUTTON_SIZE_MINUS || button.function == BUTTON_SIZE_PLUS
-							|| button.function == BUTTON_DIFFICULTY_MINUS || button.function == BUTTON_DIFFICULTY_PLUS) {
-							disabledButton = 1;
-						}
-					}
-					else {
-						if (momodings && button.function == BUTTON_SIZE_PLUS) {
-							disabledButton = 1;
-						}
-						else if (size == 9 && button.function == BUTTON_SIZE_MINUS) {
-							disabledButton = 1;
-						}
-						else if (size == 25 && button.function == BUTTON_SIZE_PLUS) {
-							disabledButton = 1;
-						}
-						if (difficulty == 1 && button.function == BUTTON_DIFFICULTY_MINUS) {
-							disabledButton = 1;
-						}
-						else if (difficulty == 3 && button.function == BUTTON_DIFFICULTY_PLUS) {
-							disabledButton = 1;
-						}
-					}
-				}
-				else if (button.tab == TAB_NUMPAD) {
-					if (selectedSlot == -1) {
+					if (button.function == BUTTON_LOAD) {
 						disabledButton = 1;
 					}
-					else if (calculating) {
+				}
+			}
+			else if (button.tab == TAB_SETTINGS) {
+				if (calculating) {
+					if (button.function == BUTTON_SIZE_MINUS || button.function == BUTTON_SIZE_PLUS
+						|| button.function == BUTTON_DIFFICULTY_MINUS || button.function == BUTTON_DIFFICULTY_PLUS) {
 						disabledButton = 1;
 					}
-					else {
-						if (button.function > size) {
-							disabledButton = 1;
-						}
-						if (button.function == -999) {
-							disabledButton = 0;
-						}
+				}
+				else {
+					if (momodings && button.function == BUTTON_SIZE_PLUS) {
+						disabledButton = 1;
+					}
+					else if (size == 9 && button.function == BUTTON_SIZE_MINUS) {
+						disabledButton = 1;
+					}
+					else if (size == 25 && button.function == BUTTON_SIZE_PLUS) {
+						disabledButton = 1;
+					}
+					if (difficulty == 1 && button.function == BUTTON_DIFFICULTY_MINUS) {
+						disabledButton = 1;
+					}
+					else if (difficulty == 3 && button.function == BUTTON_DIFFICULTY_PLUS) {
+						disabledButton = 1;
+					}
+				}
+			}
+			else if (button.tab == TAB_NUMPAD) {
+				if (selectedSlot == -1) {
+					disabledButton = 1;
+				}
+				else if (calculating) {
+					disabledButton = 1;
+				}
+				else {
+					if (button.function > size) {
+						disabledButton = 1;
+					}
+					if (button.function == -999) {
+						disabledButton = 0;
 					}
 				}
 			}
@@ -1094,6 +1075,15 @@ int main(int argc, char* argv[]) {
 
 	printf("DONE\n");
 
+	if (savedSudoku.size != 0) {
+		for (x = 0; x < size; x++) {
+			savedSudoku.numbers[x] = NULL;
+			savedSudoku.generatedNumbers[x] = NULL;
+			free(savedSudoku.numbers[x]);
+			free(savedSudoku.generatedNumbers[x]);
+		}
+	}
+
 	for (x = 0; x < size; x++) {
 		numbers[x] = NULL;
 		free(numbers[x]);
@@ -1101,23 +1091,14 @@ int main(int argc, char* argv[]) {
 
 	numbers = NULL;
 	free(numbers);
+	savedSudoku.numbers = NULL;
+	savedSudoku.generatedNumbers = NULL;
+	free(savedSudoku.numbers);
+	free(savedSudoku.generatedNumbers);
 
 	//Mix_HaltMusic(music);
 	//music = NULL;
 	//Mix_FreeMusic(music);
-
-	for (x = 0; x < size; x++) {
-		for (x = 0; x < size; x++) {
-			savedSudoku[x] = NULL;
-			free(savedSudoku[x]);
-		}
-
-		savedSudoku = NULL;
-		free(savedSudoku[x]);
-	}
-
-	savedSudoku = NULL;
-	free(savedSudoku);
 
 	for (x = 0; x < size; x++) {
 		generatedNumbers[x] = NULL;
@@ -1430,6 +1411,7 @@ int solve(int size, int timelimit) {
 		solved = 1;
 		if (!cancel && !checkSudoku(size)) {
 			printf("\n   An error has been detected. Sudoku not solved.\n");
+			getchar();
 			solved = 0;
 		}
 		row = 0;
@@ -2027,15 +2009,12 @@ void generate(int size, int difficulty) {
 					break;
 				}
 				if (!cancel) {
-					printf("generating AGAIN\n");
 					generate(size, difficulty);
 				}
-				printf("Returning!!!\n");
 				return;
 			}
 			row = rand() % size;
 			col = rand() % size;
-			printf("random!!!\n");
 		} while (numbers[row][col] == 0 || alreadyTried[row][col] == 1);
 		attempts = 0;
 		testnum = numbers[row][col];
@@ -2111,7 +2090,7 @@ void initializeSize(int size, SDL_Rect* sudoku) {
 	Feld feld;
 	SDL_Rect rect;
 	int x = 20, y = 20, side = sqrt(size);
-	for (int i = row * size; i < size * size; i++) {
+	for (int i = 0/*row * size*/; i < size * size; i++) {
 		rect = sudoku[i];
 		feld = felder[i];
 		if (rect.w != dim) {
@@ -2360,11 +2339,11 @@ SDL_Color newColor(int r, int g, int b, int a) {
 Feld createFeld(int num, int row, int col, int x, int y, int w, int h, SDL_Color color) {
 	Feld feld;
 	SDL_Rect rect = { 0, 0, 0, 0 };
-	feld.rect = rect;
 	rect.x = x;
 	rect.y = y;
 	rect.w = w;
 	rect.h = h;
+	feld.rect = rect;
 	//char *c = num + 48;
 	feld.number = num;
 	feld.row = row;
@@ -2372,7 +2351,7 @@ Feld createFeld(int num, int row, int col, int x, int y, int w, int h, SDL_Color
 	if (num < 10) {
 		Uint16 ch;
 		if (num == 0) {
-			ch = 'x';
+			ch = 32;
 		}
 		else {
 			ch = num + 48;
@@ -2508,9 +2487,9 @@ void changeSize(int newsize) {
 	for (i = 0; i < size*size; i++) {
 		Feld feld = createFeld(0, i / size, i % size, 0, 0, squareSize * 0.4, squareSize*0.8, newColor(255, 255, 255, SDL_ALPHA_OPAQUE));
 		felder[i] = feld;
-		if (!momodings) {
+		//if (!momodings) {
 			animatedFields[i] = 0;
-		}
+		//}
 	}
 	initializeRects(size, fields);
 	initializeSize(size, fields, 0, 0);
